@@ -1,42 +1,36 @@
 # pi-hostinger-router
 
-[Hostinger Router](https://router.hostinger.com) provider for [pi](https://pi.dev). Registers the full chat model catalog (~150 models: Claude, GPT, Gemini, Grok, Kimi, DeepSeek, …) with:
+Use [Hostinger Router](https://router.hostinger.com) with [pi](https://pi.dev) — one provider, the full chat model catalog (~150 models: Claude, GPT, Gemini, Grok, Kimi, DeepSeek, …).
 
-- **Live catalog** — models fetched from `GET /v1/models`, refreshed on session start and every time the model selector opens
-- **Vision / reasoning detection** — from `architecture.input_modalities` and `supported_parameters`
-- **USD cost tracking** — router credits converted at 1 credit = $0.01, so pi's footer matches the Hostinger dashboard
-- **Instant startup** — catalog cached at `~/.pi/agent/hostinger-router-models.json`
+- **Always up to date** — the model list is fetched live on session start and every time you open the model selector
+- **Vision & reasoning aware** — detected automatically for each model
+- **Cost tracking** — pi's footer shows cost in `$` (1$ = 100 credits on your Hostinger dashboard)
+- **Instant startup** — the catalog is cached locally at `~/.pi/agent/hostinger-router-models.json`
 
 ## Install
 
 ```bash
-pi install git:github.com/<you>/pi-hostinger-router@v1
-# or
-pi install npm:pi-hostinger-router
-# or try without installing:
-pi -e /path/to/pi-hostinger-router
+pi install git:github.com/algirdasc/pi-hostinger-router
 ```
 
-## Auth
+Or try it without installing:
 
-Either set the env var:
+```bash
+pi -e git:github.com/algirdasc/pi-hostinger-router
+```
+
+## Setup
+
+1. Grab an API key from your Hostinger Router dashboard.
+2. In pi, run `/login hostinger-router` and paste the key.
+3. Open `/model` and pick any `hostinger-router` model.
+
+That's it — the key is stored in `~/.pi/agent/auth.json`.
+
+### Headless / automation
+
+For scripts and CI where `/login` isn't available, set the key as an environment variable instead:
 
 ```bash
 export HOSTINGER_ROUTER_API_KEY=sk-hstgr-...
-```
-
-or run `/login hostinger-router` inside pi (stored in `~/.pi/agent/auth.json`).
-
-Then `/model` and pick anything `hostinger-router`.
-
-## Notes
-
-- Only chat models are registered; audio/image/embedding-only models and expired models are filtered out.
-- Picker shows model IDs (`kimi-k3`), not display names — that's pi's UI, but fuzzy search matches display names too (`kimi k3` works).
-- Non-chat endpoints (`/v1/embeddings`, `/v1/images`, …) are not wired up.
-
-## Test
-
-```bash
-node test/hostinger-router.test.mjs
 ```

@@ -4,6 +4,7 @@ const baseUrl = "https://router.hostinger.com/v1";
 const cachePath = process.env.HOME + "/.pi/agent/hostinger-router-models.json";
 const authPath = process.env.HOME + "/.pi/agent/auth.json";
 
+// $1 = 100 credits on the Hostinger dashboard; pi's footer shows $
 const dollarsPerMillionTokens = (creditsPerToken) => Math.round(Number(creditsPerToken || 0) * 10000 * 1e6) / 1e6;
 
 function resolveApiKey() {
