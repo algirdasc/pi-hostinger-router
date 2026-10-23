@@ -24,7 +24,7 @@ const payload = {
       pricing: { prompt: "0.0001", completion: "0.0004", input_cache_read: "0", input_cache_write: "0", input_cache_write_1h: "0" },
       supported_parameters: ["temperature"],
       architecture: { input_modalities: ["text", "image"] },
-      supported_endpoints: ["/v1/chat/completions"],
+      supported_endpoints: ["/v1/chat/completions", "/v1/responses"],
     },
     {
       id: "tts-z",
@@ -57,6 +57,8 @@ assert.equal(gpt.cost.output, 20);
 assert.equal(gpt.cost.cacheRead, 0.25);
 assert.equal(gpt.cost.cacheWrite, 3);
 assert.deepEqual(vision.input, ["text", "image"]);
+assert.equal(vision.api, "openai-responses");
+assert.equal(gpt.api, "openai-completions", "no endpoint info: fall back to chat completions");
 assert.equal(gpt.maxTokens, 64000);
 assert.equal(vision.maxTokens, 4096);
 

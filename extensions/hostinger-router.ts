@@ -21,11 +21,13 @@ async function fetchModels(apiKey) {
   if (!res.ok) throw new Error("models fetch failed: " + res.status);
   const payload = await res.json();
   const models = (payload.data || [])
-    .filter((m) => !m.supported_endpoints || m.supported_endpoints.some((e) => e.includes("chat")))
+    .filter((m) => !m.supported_endpoints || m.supported_endpoints.some((e) => e.includes("chat") || e.includes("responses")))
     .filter((m) => !m.expiration_date || new Date(m.expiration_date) > new Date())
     .map((m) => ({
       id: m.id,
       name: m.name || m.id,
+      // prefer /v1/responses over the deprecated /v1/chat/completions when supported
+      api: (m.supported_endpoints || []).some((e) => e.includes("responses")) ? "openai-responses" : "openai-completions",
       reasoning: (m.supported_parameters || []).some((p) => p.startsWith("reasoning")),
       input: m.architecture?.input_modalities?.includes("image") ? ["text", "image"] : ["text"],
       cost: {
