@@ -1,0 +1,63 @@
+name: Release on PR merge
+
+# Every merged PR bumps the version, tags it and triggers publish.yml.
+# Bump size is chosen by PR label: `major`, `minor` (default: patch).
+# Add the `skip-release` label to merge without releasing.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-release')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push version commit + tag
+      actions: write    # dispatch publish.yml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Determine version bump
+        id: bump
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -q '"major"'; then BUMP=major
+          elif echo "$LABELS" | grep -q '"minor"'; then BUMP=minor
+          else BUMP=patch; fi
+          echo "type=$BUMP" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version, commit and tag
+        id: version
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          TAG=$(npm version "${{ steps.bump.outputs.type }}" -m "chore(release): %s (#$PR_NUMBER)")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Push commit and tag
+        run: git push --atomic origin "HEAD:${{ github.event.pull_request.base.ref }}" "${{ steps.version.outputs.tag }}"
+
+      # Tags pushed with GITHUB_TOKEN don't trigger other workflows,
+      # but workflow_dispatch is allowed — so dispatch publish explicitly.
+      - name: Trigger publish workflow
+        run: gh workflow run publish.yml --ref "${{ steps.version.outputs.tag }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

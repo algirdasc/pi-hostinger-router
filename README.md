@@ -10,6 +10,8 @@ Use [Hostinger Router](https://router.hostinger.com) with [pi](https://pi.dev) â
 ## Install
 
 ```bash
+pi install npm:pi-hostinger-router
+# or from git
 pi install git:github.com/algirdasc/pi-hostinger-router
 ```
 

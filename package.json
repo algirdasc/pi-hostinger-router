@@ -4,5 +4,21 @@
   "description": "Hostinger Router provider for pi — live model catalog, vision and reasoning detection, USD cost tracking",
   "type": "module",
   "keywords": ["pi-package"],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/algirdasc/pi-hostinger-router.git"
+  },
+  "homepage": "https://github.com/algirdasc/pi-hostinger-router#readme",
+  "bugs": "https://github.com/algirdasc/pi-hostinger-router/issues",
+  "files": ["extensions", "README.md"],
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "scripts": {
+    "test": "node test/hostinger-router.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
 }
