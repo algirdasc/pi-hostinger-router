@@ -1,6 +1,6 @@
 {
   "name": "pi-hostinger-router",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Hostinger Router provider for pi — live model catalog, vision and reasoning detection, USD cost tracking",
   "type": "module",
   "keywords": [
