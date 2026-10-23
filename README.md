@@ -9,17 +9,27 @@ Use [Hostinger Router](https://router.hostinger.com) with [pi](https://pi.dev) â
 
 ## Install
 
+[![npm](https://img.shields.io/npm/v/pi-hostinger-router)](https://www.npmjs.com/package/pi-hostinger-router)
+
+The package is published on npm as [`pi-hostinger-router`](https://www.npmjs.com/package/pi-hostinger-router). Install it with pi:
+
 ```bash
 pi install npm:pi-hostinger-router
-# or from git
-pi install git:github.com/algirdasc/pi-hostinger-router
 ```
 
-Or try it without installing:
+Pin a specific version:
 
 ```bash
-pi -e git:github.com/algirdasc/pi-hostinger-router
+pi install npm:pi-hostinger-router@1.0.1
 ```
+
+Try it for a single session without installing:
+
+```bash
+pi -e npm:pi-hostinger-router
+```
+
+To update later, run `pi update npm:pi-hostinger-router`. To remove it, run `pi remove npm:pi-hostinger-router`.
 
 ## Setup
 
