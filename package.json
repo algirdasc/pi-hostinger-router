@@ -4,7 +4,10 @@
   "description": "Hostinger Router provider for pi — live model catalog, vision and reasoning detection, USD cost tracking",
   "type": "module",
   "keywords": [
-    "pi-package"
+    "pi",
+    "pi-package",
+    "pi-coding-agent",
+    "pi-extension"
   ],
   "license": "MIT",
   "repository": {
