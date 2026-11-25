@@ -77,9 +77,19 @@ assert.equal(fromCache.models.length, 2);
 
 // debug mode: logs only when enabled, flags lone surrogates
 const { readFileSync, existsSync } = await import("node:fs");
-const handlers = {};
+const registry = {};
 let cmd;
-await ext({ registerProvider() {}, registerCommand: (n, c) => (cmd = c), on: (e, h) => (handlers[e] = h) });
+await ext({ registerProvider() {}, registerCommand: (n, c) => (cmd = c), on: (e, h) => (registry[e] ||= []).push(h) });
+// chain like pi: later handlers see earlier return values; returns the final replacement (or undefined)
+const chain = (e) => (event, c) => {
+  let replaced;
+  for (const h of registry[e]) {
+    const r = h(event, c);
+    if (r !== undefined) event = { ...event, payload: (replaced = r) };
+  }
+  return replaced;
+};
+const handlers = Object.fromEntries(Object.keys(registry).map((e) => [e, chain(e)]));
 const ctx = { model: { provider: "hostinger-router", id: "gpt-x", api: "openai-completions" }, ui: { notify() {} } };
 const logPath = join(process.env.HOME, ".pi/agent/hostinger-router-debug.log");
 handlers.before_provider_request({ payload: { a: 1 } }, ctx);
@@ -95,5 +105,34 @@ assert.match(logged, /\$\.messages\[0\]\.content @4/);
 assert.match(logged, /RESPONSE 400/);
 assert.match(logged, /Invalid JSON body/);
 assert.doesNotMatch(logged, /"x": 1/, "other providers not logged");
+
+// reasoning sanitizer: always on for openai-responses, independent of debug
+const rctx = { model: { provider: "hostinger-router", id: "vision-y", api: "openai-responses" } };
+const input = [
+  { role: "user", content: "hi" },
+  { type: "reasoning", id: "rs_x", content: [] },
+  { type: "reasoning", id: "rs_y", encrypted_content: "" },
+  { type: "reasoning", id: "rs_enc", encrypted_content: "abc" },
+  { type: "function_call", call_id: "c1", name: "ls", arguments: "{}" },
+  { type: "function_call_output", call_id: "c1", output: "x" },
+];
+const original = { model: "vision-y", store: false, input };
+const snapshot = JSON.stringify(original);
+const cleaned = handlers.before_provider_request({ payload: original }, rctx);
+assert.equal(JSON.stringify(original), snapshot, "payload not mutated in place");
+assert.deepEqual(cleaned.input.map((i) => i.id || i.type || i.role), ["user", "rs_enc", "function_call", "function_call_output"]);
+assert.deepEqual(cleaned.input[1], { type: "reasoning", id: "rs_enc", encrypted_content: "abc", summary: [] });
+assert.equal(cleaned.store, false, "other fields preserved");
+assert.match(readFileSync(logPath, "utf8"), /SANITIZE[^\n]*\n.*dropped 2 reasoning item\(s\) without encrypted_content/);
+assert.match(readFileSync(logPath, "utf8"), /"rs_enc"/, "debug logger sees sanitized payload");
+assert.doesNotMatch(readFileSync(logPath, "utf8"), /"rs_x"/, "dropped item never logged as sent");
+assert.equal(handlers.before_provider_request({ payload: { input: [{ role: "user", content: "hi" }] } }, rctx), undefined, "no reasoning: unchanged");
+const ok = { type: "reasoning", id: "rs_ok", encrypted_content: "e", summary: [] };
+assert.equal(handlers.before_provider_request({ payload: { input: [ok] } }, rctx), undefined, "valid reasoning: unchanged");
+await cmd.handler("off", ctx);
+const dirty = { input: [{ type: "reasoning", id: "rs_x", content: [] }] };
+assert.deepEqual(handlers.before_provider_request({ payload: dirty }, rctx).input, [], "sanitizer runs with debug off");
+assert.equal(handlers.before_provider_request({ payload: dirty }, ctx), undefined, "chat completions models untouched");
+assert.equal(handlers.before_provider_request({ payload: dirty }, { model: { provider: "other", api: "openai-responses" } }), undefined, "other providers untouched");
 
 console.log("ok");

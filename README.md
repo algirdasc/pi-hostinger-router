@@ -58,3 +58,7 @@ If a request fails (e.g. `400 Invalid JSON body`), turn on debug logging:
 Or start pi with `HOSTINGER_ROUTER_DEBUG=1`. Each request payload, response status/headers and error message for `hostinger-router` models is appended to `~/.pi/agent/hostinger-router-debug.log`. Requests containing broken unicode (lone UTF-16 surrogates — a common cause of `Invalid JSON body`) are flagged with the exact JSON path.
 
 The log contains your full prompts — delete it when done.
+
+## Changelog
+
+- **1.0.4** — Fix `400 Missing required parameter: 'input[N].summary'` on the second turn with `/responses` models. Hostinger streams reasoning items without `summary`/`encrypted_content`; these are now dropped from the request (they can't be reused with `store: false` anyway). With debug on, a `SANITIZE` line records how many were dropped.
