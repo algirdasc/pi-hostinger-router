@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync } from "fs";
+import { appendFileSync, readFileSync, writeFileSync } from "fs";
 
 const baseUrl = "https://router.hostinger.com/v1";
 const cachePath = process.env.HOME + "/.pi/agent/hostinger-router-models.json";
 const authPath = process.env.HOME + "/.pi/agent/auth.json";
+const debugLogPath = process.env.HOME + "/.pi/agent/hostinger-router-debug.log";
 
 // $1 = 100 credits on the Hostinger dashboard; pi's footer shows $
 const dollarsPerMillionTokens = (creditsPerToken) => Math.round(Number(creditsPerToken || 0) * 10000 * 1e6) / 1e6;
@@ -63,8 +64,70 @@ function register(pi, models) {
   });
 }
 
+// lone UTF-16 surrogates (e.g. a truncated emoji) serialize to JSON that strict servers reject as "Invalid JSON body"
+function findLoneSurrogates(value, path = "$", hits = []) {
+  if (hits.length >= 20) return hits;
+  if (typeof value === "string") {
+    const m = value.match(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+    if (m) hits.push(path + " @" + m.index + ": …" + JSON.stringify(value.slice(Math.max(0, m.index - 40), m.index + 40)) + "…");
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => findLoneSurrogates(v, path + "[" + i + "]", hits));
+  } else if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) findLoneSurrogates(value[k], path + "." + k, hits);
+  }
+  return hits;
+}
+
+// opt-in request/response logging: `/hostinger-debug on|off` or HOSTINGER_ROUTER_DEBUG=1
+function registerDebug(pi) {
+  let enabled = /^(1|true|on|yes)$/i.test(process.env.HOSTINGER_ROUTER_DEBUG || "");
+  const ours = (ctx) => ctx?.model?.provider === "hostinger-router";
+  const log = (title, body) => {
+    try {
+      appendFileSync(debugLogPath, "=== " + new Date().toISOString() + " " + title + " ===\n" + body + "\n\n");
+    } catch {}
+  };
+
+  pi.registerCommand?.("hostinger-debug", {
+    description: "Toggle Hostinger Router request/response logging (on|off|status)",
+    getArgumentCompletions: (prefix) => ["on", "off", "status"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v })),
+    handler: async (args, ctx) => {
+      const arg = (args || "").trim().toLowerCase();
+      if (arg === "on") enabled = true;
+      else if (arg === "off") enabled = false;
+      else if (arg !== "status") enabled = !enabled;
+      ctx.ui.notify("Hostinger Router debug " + (enabled ? "ON → " + debugLogPath : "OFF"), "info");
+    },
+  });
+
+  pi.on("before_provider_request", (event, ctx) => {
+    if (!enabled || !ours(ctx)) return;
+    let body;
+    try {
+      body = JSON.stringify(event.payload, null, 2);
+    } catch (e) {
+      body = "<payload not serializable: " + e.message + ">";
+    }
+    const lone = findLoneSurrogates(event.payload);
+    const warn = lone.length ? "!! lone UTF-16 surrogates found (likely cause of 'Invalid JSON body'):\n  " + lone.join("\n  ") + "\n" : "";
+    log("REQUEST " + ctx.model.id + " (" + ctx.model.api + ", " + (body?.length ?? 0) + " chars)", warn + body);
+  });
+
+  pi.on("after_provider_response", (event, ctx) => {
+    if (!enabled || !ours(ctx)) return;
+    log("RESPONSE " + event.status, JSON.stringify(event.headers, null, 2));
+  });
+
+  pi.on("message_end", (event, ctx) => {
+    const msg = event.message;
+    if (!enabled || !ours(ctx) || msg?.role !== "assistant" || !msg.errorMessage) return;
+    log("ERROR " + (msg.stopReason || ""), msg.errorMessage);
+  });
+}
+
 // ponytail: disk cache for instant startup; live refresh happens on session_start and whenever the model selector opens
 export default async function (pi) {
+  registerDebug(pi);
   let models = null;
   try {
     models = JSON.parse(readFileSync(cachePath, "utf8"));

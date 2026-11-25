@@ -75,4 +75,25 @@ let fromCache;
 await ext({ registerProvider: (name, cfg) => (fromCache = cfg), on() {} });
 assert.equal(fromCache.models.length, 2);
 
+// debug mode: logs only when enabled, flags lone surrogates
+const { readFileSync, existsSync } = await import("node:fs");
+const handlers = {};
+let cmd;
+await ext({ registerProvider() {}, registerCommand: (n, c) => (cmd = c), on: (e, h) => (handlers[e] = h) });
+const ctx = { model: { provider: "hostinger-router", id: "gpt-x", api: "openai-completions" }, ui: { notify() {} } };
+const logPath = join(process.env.HOME, ".pi/agent/hostinger-router-debug.log");
+handlers.before_provider_request({ payload: { a: 1 } }, ctx);
+assert.equal(existsSync(logPath), false, "debug off by default");
+await cmd.handler("on", ctx);
+handlers.before_provider_request({ payload: { messages: [{ content: "bad \uD83D here" }] } }, ctx);
+handlers.after_provider_response({ status: 400, headers: {} }, ctx);
+handlers.message_end({ message: { role: "assistant", stopReason: "error", errorMessage: "Invalid JSON body." } }, ctx);
+handlers.before_provider_request({ payload: { x: 1 } }, { model: { provider: "other" } });
+const logged = readFileSync(logPath, "utf8");
+assert.match(logged, /lone UTF-16 surrogates/);
+assert.match(logged, /\$\.messages\[0\]\.content @4/);
+assert.match(logged, /RESPONSE 400/);
+assert.match(logged, /Invalid JSON body/);
+assert.doesNotMatch(logged, /"x": 1/, "other providers not logged");
+
 console.log("ok");

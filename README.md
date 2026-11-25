@@ -46,3 +46,15 @@ For scripts and CI where `/login` isn't available, set the key as an environment
 ```bash
 export HOSTINGER_ROUTER_API_KEY=sk-hstgr-...
 ```
+
+## Debugging
+
+If a request fails (e.g. `400 Invalid JSON body`), turn on debug logging:
+
+```
+/hostinger-debug on      # or: off, status; no arg toggles
+```
+
+Or start pi with `HOSTINGER_ROUTER_DEBUG=1`. Each request payload, response status/headers and error message for `hostinger-router` models is appended to `~/.pi/agent/hostinger-router-debug.log`. Requests containing broken unicode (lone UTF-16 surrogates — a common cause of `Invalid JSON body`) are flagged with the exact JSON path.
+
+The log contains your full prompts — delete it when done.
