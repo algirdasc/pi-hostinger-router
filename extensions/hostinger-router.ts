@@ -78,30 +78,66 @@ function findLoneSurrogates(value, path = "$", hits = []) {
   return hits;
 }
 
+const ours = (ctx) => ctx?.model?.provider === "hostinger-router";
+
+function debugLog(title, body) {
+  try {
+    appendFileSync(debugLogPath, "=== " + new Date().toISOString() + " " + title + " ===\n" + body + "\n\n");
+  } catch {}
+}
+
+// Hostinger streams reasoning items without summary/encrypted_content; pi echoes them back in `input`
+// and OpenAI rejects them ("Missing required parameter: 'input[N].summary'"). With store:false an item
+// without encrypted_content is a dangling id anyway, so drop it; keep encrypted ones but ensure summary.
+export function sanitizeResponsesInput(payload) {
+  let dropped = 0;
+  let changed = false;
+  const input = [];
+  for (const item of payload.input) {
+    if (item?.type !== "reasoning") {
+      input.push(item);
+    } else if (typeof item.encrypted_content !== "string" || item.encrypted_content === "") {
+      dropped++;
+      changed = true;
+    } else if (!Array.isArray(item.summary)) {
+      input.push({ ...item, summary: [] });
+      changed = true;
+    } else {
+      input.push(item);
+    }
+  }
+  return changed ? { payload: { ...payload, input }, dropped } : undefined;
+}
+
+// always on; registered before the debug logger so the log shows the payload actually sent
+function registerSanitizer(pi, debug) {
+  pi.on("before_provider_request", (event, ctx) => {
+    if (!ours(ctx) || ctx.model.api !== "openai-responses" || !Array.isArray(event.payload?.input)) return;
+    const result = sanitizeResponsesInput(event.payload);
+    if (!result) return;
+    if (debug.enabled && result.dropped) debugLog("SANITIZE", "dropped " + result.dropped + " reasoning item(s) without encrypted_content");
+    return result.payload;
+  });
+}
+
 // opt-in request/response logging: `/hostinger-debug on|off` or HOSTINGER_ROUTER_DEBUG=1
-function registerDebug(pi) {
-  let enabled = /^(1|true|on|yes)$/i.test(process.env.HOSTINGER_ROUTER_DEBUG || "");
-  const ours = (ctx) => ctx?.model?.provider === "hostinger-router";
-  const log = (title, body) => {
-    try {
-      appendFileSync(debugLogPath, "=== " + new Date().toISOString() + " " + title + " ===\n" + body + "\n\n");
-    } catch {}
-  };
+function registerDebug(pi, debug) {
+  const log = debugLog;
 
   pi.registerCommand?.("hostinger-debug", {
     description: "Toggle Hostinger Router request/response logging (on|off|status)",
     getArgumentCompletions: (prefix) => ["on", "off", "status"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v })),
     handler: async (args, ctx) => {
       const arg = (args || "").trim().toLowerCase();
-      if (arg === "on") enabled = true;
-      else if (arg === "off") enabled = false;
-      else if (arg !== "status") enabled = !enabled;
-      ctx.ui.notify("Hostinger Router debug " + (enabled ? "ON → " + debugLogPath : "OFF"), "info");
+      if (arg === "on") debug.enabled = true;
+      else if (arg === "off") debug.enabled = false;
+      else if (arg !== "status") debug.enabled = !debug.enabled;
+      ctx.ui.notify("Hostinger Router debug " + (debug.enabled ? "ON → " + debugLogPath : "OFF"), "info");
     },
   });
 
   pi.on("before_provider_request", (event, ctx) => {
-    if (!enabled || !ours(ctx)) return;
+    if (!debug.enabled || !ours(ctx)) return;
     let body;
     try {
       body = JSON.stringify(event.payload, null, 2);
@@ -114,20 +150,22 @@ function registerDebug(pi) {
   });
 
   pi.on("after_provider_response", (event, ctx) => {
-    if (!enabled || !ours(ctx)) return;
+    if (!debug.enabled || !ours(ctx)) return;
     log("RESPONSE " + event.status, JSON.stringify(event.headers, null, 2));
   });
 
   pi.on("message_end", (event, ctx) => {
     const msg = event.message;
-    if (!enabled || !ours(ctx) || msg?.role !== "assistant" || !msg.errorMessage) return;
+    if (!debug.enabled || !ours(ctx) || msg?.role !== "assistant" || !msg.errorMessage) return;
     log("ERROR " + (msg.stopReason || ""), msg.errorMessage);
   });
 }
 
 // ponytail: disk cache for instant startup; live refresh happens on session_start and whenever the model selector opens
 export default async function (pi) {
-  registerDebug(pi);
+  const debug = { enabled: /^(1|true|on|yes)$/i.test(process.env.HOSTINGER_ROUTER_DEBUG || "") };
+  registerSanitizer(pi, debug); // must precede registerDebug: handlers chain in registration order
+  registerDebug(pi, debug);
   let models = null;
   try {
     models = JSON.parse(readFileSync(cachePath, "utf8"));
